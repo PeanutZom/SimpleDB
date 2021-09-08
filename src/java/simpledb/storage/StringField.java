@@ -30,10 +30,11 @@ public class StringField implements Field {
 	public StringField(String s, int maxSize) {
 		this.maxSize = maxSize;
 
-		if (s.length() > maxSize)
+		if (s.length() > maxSize) {
 			value = s.substring(0, maxSize);
-		else
+		} else {
 			value = s;
+		}
 	}
 
 	public String toString() {
@@ -65,8 +66,9 @@ public class StringField implements Field {
 		}
 		dos.writeInt(s.length());
 		dos.writeBytes(s);
-		while (overflow-- > 0)
+		while (overflow-- > 0) {
 			dos.write((byte) 0);
+		}
 	}
 
 	/**
@@ -77,6 +79,7 @@ public class StringField implements Field {
 	 *             if val is not a StringField
 	 * @see Field#compare
 	 */
+	@Override
 	public boolean compare(Predicate.Op op, Field val) {
 
 		StringField iVal = (StringField) val;

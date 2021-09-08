@@ -1,14 +1,14 @@
 package simpledb.storage;
 
-import simpledb.common.Database;
-import simpledb.common.Permissions;
-import simpledb.common.DbException;
-import simpledb.common.DeadlockException;
+import simpledb.common.*;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -33,6 +33,10 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    Page[] pool;
+
+
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -40,6 +44,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        pool = new Page[numPages];
+
     }
     
     public static int getPageSize() {
@@ -74,7 +80,23 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+
+        for (Page page : pool){
+            if (page!=null&&page.getId().equals(pid)){
+                return page;
+            }
+        }
+
+        for (int i=0;i<pool.length;i++){
+            if (pool[i]==null){
+                pool[i] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+
+                return pool[i];
+            }
+        }
+
+        throw new DbException("Buffer pool is full");
+
     }
 
     /**

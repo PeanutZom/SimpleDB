@@ -73,7 +73,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
+        return Math.floorDiv((BufferPool.getPageSize()*8) , (td.getSize() * 8 + 1));
 
     }
 
@@ -84,12 +84,14 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
+        return (int)Math.ceil((double) getNumTuples()/8);
+
                  
     }
     
     /** Return a view of this page before it was modified
         -- used by recovery */
+    @Override
     public HeapPage getBeforeImage(){
         try {
             byte[] oldDataRef = null;
@@ -106,6 +108,7 @@ public class HeapPage implements Page {
         return null;
     }
     
+    @Override
     public void setBeforeImage() {
         synchronized(oldDataLock)
         {
@@ -116,9 +119,11 @@ public class HeapPage implements Page {
     /**
      * @return the PageId associated with this page.
      */
+    @Override
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return pid;
+    //throw new UnsupportedOperationException("implement this");
     }
 
     /**
@@ -166,6 +171,7 @@ public class HeapPage implements Page {
      * @see #HeapPage
      * @return A byte array correspond to the bytes of this page.
      */
+    @Override
     public byte[] getPageData() {
         int len = BufferPool.getPageSize();
         ByteArrayOutputStream baos = new ByteArrayOutputStream(len);
@@ -269,6 +275,7 @@ public class HeapPage implements Page {
      * Marks this page as dirty/not dirty and record that transaction
      * that did the dirtying
      */
+    @Override
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
 	// not necessary for lab1
@@ -277,6 +284,7 @@ public class HeapPage implements Page {
     /**
      * Returns the tid of the transaction that last dirtied this page, or null if the page is not dirty
      */
+    @Override
     public TransactionId isDirty() {
         // some code goes here
 	// Not necessary for lab1
@@ -288,7 +296,13 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int num = 0;
+        for (int i =0;i<numSlots;i++){
+            if (!isSlotUsed(i)){
+                num++;
+            }
+        }
+        return num;
     }
 
     /**
@@ -296,7 +310,11 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        if (i>=numSlots){
+            return false;
+        }
+
+        return ((header[i/8]>>i%8)&0x1)==1;
     }
 
     /**
@@ -313,7 +331,36 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new Iterator<Tuple>() {
+            private int idx = -1;
+
+            @Override
+            public boolean hasNext() {
+
+                while (idx+1<numSlots&&!isSlotUsed(idx+1)){
+                    idx++;
+                }
+
+                return idx+1<numSlots;
+            }
+
+            @Override
+            public Tuple next() {
+                //if (hasNext()){
+
+                    return tuples[++idx];
+
+                //}else {
+                //    throw new NoSuchElementException();
+                //}
+            }
+
+            @Override
+            public void remove() {
+                throw  new UnsupportedOperationException();
+            }
+        };
+
     }
 
 }
