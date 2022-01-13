@@ -90,14 +90,22 @@ public class TestUtil {
      *   corresponding fields in the two Tuples are all equal.
      */
     public static boolean compareTuples(Tuple t1, Tuple t2) {
-        if (t1.getTupleDesc().numFields() != t2.getTupleDesc().numFields())
+        if (t1.getTupleDesc().numFields() != t2.getTupleDesc().numFields()){
             return false;
+        }
+
 
         for (int i = 0; i < t1.getTupleDesc().numFields(); ++i) {
-            if (!(t1.getTupleDesc().getFieldType(i).equals(t2.getTupleDesc().getFieldType(i))))
+            if (!(t1.getTupleDesc().getFieldType(i).equals(t2.getTupleDesc().getFieldType(i)))){
+                System.out.println(i+" "+t1.getTupleDesc().getFieldType(i));
+                System.out.println(t2.getTupleDesc().getFieldType(i));
                 return false;
-            if (!(t1.getField(i).equals(t2.getField(i))))
+            }
+
+            if (!(t1.getField(i).equals(t2.getField(i)))){
                 return false;
+            }
+
         }
 
         return true;
@@ -134,16 +142,21 @@ public class TestUtil {
         boolean matched = false;
         while (expected.hasNext()) {
             Tuple expectedTup = expected.next();
+
             matched = false;
             actual.rewind();
 
             while (actual.hasNext()) {
+
                 Tuple next = actual.next();
+
                 if (compareTuples(expectedTup, next)) {
                     matched = true;
                     break;
                 }
+
             }
+
 
             if (!matched) {
                 throw new RuntimeException("expected tuple not found: " + expectedTup);

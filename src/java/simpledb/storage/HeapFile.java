@@ -1,5 +1,6 @@
 package simpledb.storage;
 
+import simpledb.LockManager;
 import simpledb.common.*;
 import simpledb.transaction.Transaction;
 import simpledb.transaction.TransactionAbortedException;
@@ -98,6 +99,18 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
+        RandomAccessFile toWrite = null;
+        try {
+            toWrite = new RandomAccessFile(f,"rw");
+            toWrite.seek(page.getId().getPageNumber()*BufferPool.getPageSize());
+            toWrite.write(page.getPageData());
+        }catch (Exception e){
+            e.printStackTrace();
+        }finally {
+            toWrite.close();
+        }
+
+
     }
 
     /**
@@ -105,7 +118,7 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return (int)Math.ceil(f.length()/BufferPool.getPageSize());
+        return (int)(f.length()/BufferPool.getPageSize());
     }
 
     // see DbFile.java for javadocs
@@ -113,7 +126,42 @@ public class HeapFile implements DbFile {
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-        return null;
+        int tableId = getId();
+        HeapPage emptyPage = null;
+        BufferPool bufferPool = Database.getBufferPool();
+        List<Page> modified = new ArrayList<>();
+
+        for (int i=0 ; i < numPages();i++){
+            PageId pid = new HeapPageId(tableId, i);
+            HeapPage p = (HeapPage) bufferPool.getPage(tid, pid,Permissions.READ_ONLY);
+
+            if ((p.getNumEmptySlots()>0)){
+                emptyPage = p;
+                bufferPool.lockManager.acquireLock(tid, pid, LockManager.LockType.XLock);
+                break;
+            }else{
+                bufferPool.lockManager.releaseLock(tid, pid);
+            }
+        }
+        if (emptyPage!=null){
+            //synchronized (emptyPage){
+                emptyPage.insertTuple(t);
+                modified.add(emptyPage);
+                emptyPage.markDirty(true, tid);
+            //}
+        }else {
+            HeapPageId emptyId = new HeapPageId(tableId,numPages());
+            emptyPage = new HeapPage(emptyId, HeapPage.createEmptyPageData());
+            bufferPool.lockManager.acquireLock(tid, emptyId, LockManager.LockType.XLock);
+            //synchronized (emptyPage){
+                emptyPage.insertTuple(t);
+                modified.add(emptyPage);
+                emptyPage.markDirty(true, tid);
+            //}
+            writePage(emptyPage);
+        }
+
+        return modified;
         // not necessary for lab1
     }
 
@@ -122,7 +170,17 @@ public class HeapFile implements DbFile {
     public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // some code goes here
-        return null;
+        ArrayList<Page> modified = new ArrayList<>();
+        PageId pid = t.getRecordId().getPageId();
+        Page toDelete = Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+
+        synchronized (toDelete){
+            ((HeapPage)toDelete).deleteTuple(t);
+            toDelete.markDirty(true, tid);
+        }
+
+        modified.add(toDelete);
+        return modified;
         // not necessary for lab1
     }
 
@@ -142,7 +200,7 @@ public class HeapFile implements DbFile {
                 pageNo = 0;
                 tableID = getId();
                 currPageID = new HeapPageId(tableID,0);
-                System.out.println(((HeapPage)Database.getBufferPool().getPage(tid,currPageID,Permissions.READ_ONLY)));
+
                 tupleIterator = ((HeapPage)Database.getBufferPool().getPage(tid,currPageID,Permissions.READ_ONLY)).iterator();
 
             }
@@ -156,13 +214,14 @@ public class HeapFile implements DbFile {
                 if (hasNextInPage){
                     return true;
                 }else{
-                    if (pageNo+1<numPages()){
+                    while (pageNo+1<numPages()){
                         currPageID = new HeapPageId(tableID,++pageNo);
                         tupleIterator = ((HeapPage)Database.getBufferPool().getPage(tid,currPageID,Permissions.READ_ONLY)).iterator();
-                        return tupleIterator.hasNext();
-                    }else {
-                        return false;
+                        if (tupleIterator.hasNext()){
+                            return true;
+                        }
                     }
+                    return false;
                 }
             }
 

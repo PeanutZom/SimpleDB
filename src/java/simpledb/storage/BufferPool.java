@@ -1,10 +1,11 @@
 package simpledb.storage;
 
+import simpledb.LockManager;
 import simpledb.common.*;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
-
 import java.io.*;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,11 +33,10 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
-
+    LockManager lockManager = new LockManager();
     Page[] pool;
-
-
-
+    boolean[] clock;
+    int numPages;
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -45,7 +45,8 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         pool = new Page[numPages];
-
+        clock = new boolean[numPages];
+        this.numPages = numPages;
     }
     
     public static int getPageSize() {
@@ -80,23 +81,39 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-
-        for (Page page : pool){
-            if (page!=null&&page.getId().equals(pid)){
-                return page;
+        LockManager.LockType type;
+        if (perm == Permissions.READ_ONLY){
+            type = LockManager.LockType.SLock;
+        }else {
+            type = LockManager.LockType.XLock;
+        }
+        lockManager.acquireLock(tid, pid, type);
+        for (int i=0;i<pool.length;i++){
+            if (pool[i]!=null&&pool[i].getId().equals(pid)){
+                clock[i] = true;
+                return pool[i];
             }
         }
 
         for (int i=0;i<pool.length;i++){
             if (pool[i]==null){
                 pool[i] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
-
+                clock[i] = true;
+                return pool[i];
+            }
+        }
+        evictPage();
+        for (int i=0;i<pool.length;i++){
+            if (pool[i]==null){
+                pool[i] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+                clock[i] = true;
                 return pool[i];
             }
         }
 
-        throw new DbException("Buffer pool is full");
-
+        // Page not found. release the lock
+        lockManager.releaseLock(tid, pid);
+        return null;
     }
 
     /**
@@ -111,6 +128,7 @@ public class BufferPool {
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        lockManager.releaseLock(tid, pid);
     }
 
     /**
@@ -118,16 +136,17 @@ public class BufferPool {
      *
      * @param tid the ID of the transaction requesting the unlock
      */
-    public void transactionComplete(TransactionId tid) {
+    public void transactionComplete(TransactionId tid){
         // some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return lockManager.holdsLock(tid, p);
     }
 
     /**
@@ -137,9 +156,26 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param commit a flag indicating whether we should commit or abort
      */
-    public void transactionComplete(TransactionId tid, boolean commit) {
+    public void transactionComplete(TransactionId tid, boolean commit){
         // some code goes here
         // not necessary for lab1|lab2
+        if (commit){
+            for (int i = 0; i<pool.length;i++){
+                if (pool[i]!=null&&pool[i].isDirty()!=null&&pool[i].isDirty().equals(tid)){
+                    flushPage(pool[i].getId());
+                }
+            }
+            lockManager.releaseTransaction(tid);
+        }else {
+            for (int i = 0; i<pool.length;i++){
+                if (pool[i]!=null&&pool[i].isDirty()!=null&&pool[i].isDirty().equals(tid)){
+                    PageId pid = pool[i].getId();
+                    pool[i] = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+                }
+            }
+            lockManager.releaseTransaction(tid);
+        }
+
     }
 
     /**
@@ -161,6 +197,8 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t);
+
     }
 
     /**
@@ -180,6 +218,9 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        int toDeleteTableId = t.getRecordId().getPageId().getTableId();
+        Database.getCatalog().getDatabaseFile(toDeleteTableId).deleteTuple(tid, t);
+
     }
 
     /**
@@ -187,9 +228,22 @@ public class BufferPool {
      * NB: Be careful using this routine -- it writes dirty data to disk so will
      *     break simpledb if running in NO STEAL mode.
      */
-    public synchronized void flushAllPages() throws IOException {
+    public synchronized void flushAllPages(){
         // some code goes here
         // not necessary for lab1
+        try {
+            for (Page p : pool){
+                if (p==null){
+                    continue;
+                }
+                if (p.isDirty()!=null){
+                    Database.getCatalog().getDatabaseFile(p.getId().getTableId()).writePage(p);
+                    p.markDirty(false, null);
+                }
+            }
+        }catch (IOException e){
+            e.printStackTrace();
+        }
 
     }
 
@@ -204,15 +258,35 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+
+        for (int i =0; i< pool.length; i++){
+            if (pool[i].getId().equals(pid)){
+                pool[i] = null;
+                return;
+            }
+        }
     }
 
     /**
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized  void flushPage(PageId pid){
         // some code goes here
         // not necessary for lab1
+        try {
+            Page toFlush = null;
+            for (Page p : pool){
+                if (p!=null&&p.getId().equals(pid)){
+                    toFlush = p;
+                }
+            }
+            Database.getCatalog().getDatabaseFile(((HeapPageId)pid).tableId).writePage(toFlush);
+            toFlush.markDirty(false, null);
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -220,15 +294,33 @@ public class BufferPool {
     public synchronized  void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+
     }
 
     /**
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        int tick = 0;
+        int dirtyPages = 0;
+
+            // Skip the page if it was accessed in the last run or it is dirty.
+            while (clock[tick%numPages]||pool[tick%numPages].isDirty()!=null){
+                clock[tick%numPages] = false;
+                if (pool[tick%numPages].isDirty()!=null){
+                    dirtyPages++;
+                    if (dirtyPages>numPages){
+                        throw new DbException("Full of dirty pages");
+                    }
+                }
+                tick++;
+            }
+            flushPage(pool[tick%numPages].getId());
+            discardPage(pool[tick%numPages].getId());
+
     }
 
 }

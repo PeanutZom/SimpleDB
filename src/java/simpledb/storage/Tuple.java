@@ -13,9 +13,9 @@ import java.util.Iterator;
  * with the data for each field.
  */
 public class Tuple implements Serializable {
-    TupleDesc td;
-    ArrayList<Field> fields;
-    RecordId recordId;
+    private TupleDesc td;
+    private ArrayList<Field> fields;
+    private RecordId recordId;
     private static final long serialVersionUID = 1L;
 
     /**

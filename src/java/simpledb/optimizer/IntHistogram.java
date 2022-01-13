@@ -5,7 +5,12 @@ import simpledb.execution.Predicate;
 /** A class to represent a fixed-width histogram over a single integer-based field.
  */
 public class IntHistogram {
-
+    private int buckets;
+    private int min = Integer.MAX_VALUE;
+    private int max = Integer.MIN_VALUE;
+    private int[] counts;
+    private int numTp;
+    private int width;
     /**
      * Create a new IntHistogram.
      * 
@@ -24,6 +29,15 @@ public class IntHistogram {
      */
     public IntHistogram(int buckets, int min, int max) {
     	// some code goes here
+        counts = new int[buckets];
+        this.min = min;
+        this.max = max;
+        this.buckets = buckets;
+        width = (int)Math.ceil((1.0+max-min)/buckets);
+    }
+
+    public int getIndex(int v){
+        return (int)((v-min)/width);
     }
 
     /**
@@ -32,6 +46,11 @@ public class IntHistogram {
      */
     public void addValue(int v) {
     	// some code goes here
+        if (v>max||v<min){
+            throw new IllegalArgumentException(String.format("value out of bounds[)"));
+        }
+        counts[getIndex(v)]++;
+        numTp++;
     }
 
     /**
@@ -45,8 +64,41 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
+        int bucketIndex = getIndex(v);
+        // some code goes here
+        switch (op){
+            case EQUALS:
+                if (v>max||v<min){
+                    return 0;
+                }
+                return (double)counts[bucketIndex]/width/numTp;
+            case LESS_THAN:
+                if (v>max){
+                    return 1;
+                }
+                if (v<min){
+                    return 0;
+                }
+                double total = 0;
+                double bPart = (width*(bucketIndex+1)-v)/width;
+                double bFraction = counts[bucketIndex]/numTp;
+                total+= bPart*bFraction;
+                for (int i=bucketIndex-1; i>=0; i--){
+                    total += (double)counts[i]/numTp;
+                }
 
-    	// some code goes here
+                return total;
+            case LESS_THAN_OR_EQ:
+                return estimateSelectivity(Predicate.Op.LESS_THAN, v+1);
+            case GREATER_THAN:
+                return 1 - estimateSelectivity(Predicate.Op.LESS_THAN_OR_EQ, v);
+            case GREATER_THAN_OR_EQ:
+                return 1 - estimateSelectivity(Predicate.Op.LESS_THAN, v);
+            case NOT_EQUALS:
+                return 1-estimateSelectivity(Predicate.Op.EQUALS, v);
+            case LIKE:
+                throw new UnsupportedOperationException("like is not supported yet");
+        }
         return -1.0;
     }
     
@@ -67,8 +119,10 @@ public class IntHistogram {
     /**
      * @return A string describing this histogram, for debugging purposes
      */
+    @Override
     public String toString() {
         // some code goes here
-        return null;
+        String str = "buckets:"+buckets+" min:"+min+" max:"+max+" num of Tuples"+numTp;
+        return str;
     }
 }

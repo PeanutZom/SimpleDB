@@ -31,7 +31,7 @@ public class IntHistogramTest {
 		for (int c = 0; c < 101; c++) {
 			selectivity += h.estimateSelectivity(Op.EQUALS, c);
 		}
-		
+		System.out.println(h);
 		// All the selectivities should add up to 1, by definition.
 		// Allow considerable leeway for rounding error, though 
 		// (Java double's are good to 15 or so significant figures)
@@ -113,6 +113,7 @@ public class IntHistogramTest {
 		
 		// Be conservative in case of alternate implementations
 		Assert.assertTrue(h.estimateSelectivity(Op.LESS_THAN, -1) < 0.001);
+		System.out.println();
 		Assert.assertTrue(h.estimateSelectivity(Op.LESS_THAN, 2) < 0.4);
 		Assert.assertTrue(h.estimateSelectivity(Op.LESS_THAN, 4) > 0.6);
 		Assert.assertTrue(h.estimateSelectivity(Op.LESS_THAN, 12) > 0.999);

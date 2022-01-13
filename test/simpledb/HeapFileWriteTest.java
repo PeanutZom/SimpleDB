@@ -13,6 +13,7 @@ import simpledb.systemtest.SystemTestUtil;
 import simpledb.transaction.TransactionId;
 
 import java.util.Arrays;
+import java.util.List;
 
 public class HeapFileWriteTest extends TestUtil.CreateHeapFile {
     private TransactionId tid;
@@ -44,7 +45,6 @@ public class HeapFileWriteTest extends TestUtil.CreateHeapFile {
             empty.insertTuple(tid, Utility.getHeapTuple(i, 2));
             assertEquals(2, empty.numPages());
         }
-
         // and one more, just for fun...
         empty.insertTuple(tid, Utility.getHeapTuple(0, 2));
         assertEquals(3, empty.numPages());

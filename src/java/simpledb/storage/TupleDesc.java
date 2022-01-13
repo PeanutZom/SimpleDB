@@ -215,20 +215,17 @@ public class TupleDesc implements Serializable {
         if (!(o instanceof TupleDesc)){
             return false;
         }
-        //if(((TupleDesc) o).tdList.size() != tdList.size() ){
-        //    return false;
-        //}
-        //for (int i = 0; i < tdList.size(); i++){
-        //    if (((TupleDesc) o).tdList.get(i).fieldType==tdList.get(i).fieldType){
-        //        return false;
-        //    }
-        //}
 
+        if(((TupleDesc) o).numFields() != numFields() ){
+            return false;
+        }
+        for (int i = 0; i < numFields(); i++){
+            if (!((TupleDesc) o).tdList.get(i).fieldType.equals(tdList.get(i).fieldType)){
+                return false;
+            }
+        }
 
-        //Compare by hashcode
-        if (this.hashCode() == ((TupleDesc)o).hashCode()){
-            return true;
-        }else {return false;}
+        return true;
     }
 
     @Override
